@@ -1,0 +1,15 @@
+# roles/network_common/tasks/main.yml
+---
+- name: Configurar DNS no switch
+  ios_config:
+    lines:
+      - "ip name-server {{ item }}"
+    with_items: "{{ dns_servers }}"
+  when: ansible_network_os == 'ios'
+
+- name: Configurar DNS no switch HP
+  comware_config:
+    lines:
+      - "dns server {{ item }}"
+    with_items: "{{ dns_servers }}"
+  when: ansible_network_os == 'comware'

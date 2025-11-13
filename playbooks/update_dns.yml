@@ -1,0 +1,8 @@
+---
+- name: Atualizar DNS nos switches
+  hosts: switches
+  gather_facts: no
+  roles:
+    - role: network_common
+      vars:
+        action: "update_dns"

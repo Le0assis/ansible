@@ -1,0 +1,20 @@
+# inventory/group_vars/all.yml
+ansible_connection: network_cli
+ansible_user: admin
+ansible_password: cpdscm
+ansible_become: yes
+ansible_become_method: enable
+
+# Timeout e logs
+timeout: 20
+log_path: /var/log/ansible/network.log
+
+# DNS padrão (caso não definido no host)
+dns_servers:
+  - 172.16.30.0
+  - 172.16.30.2
+
+# SNMP padrão (pode ser sobrescrito em cada host)
+snmp_version: 2c
+snmp_community: public
+snmp_port: 161

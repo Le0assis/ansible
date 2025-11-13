@@ -1,0 +1,29 @@
+# playbooks/test_connect.yml
+---
+- name: Testar conexão e coletar informações básicas dos switches
+  hosts: switches
+  gather_facts: no
+
+  tasks:
+    - name: Exibir nome do host e IP configurado
+      debug:
+        msg: "Conectando em {{ inventory_hostname }} ({{ ansible_host }})"
+
+    - name: Mostrar DNS configurado para este host
+      debug:
+        var: dns_servers
+
+    - name: Teste de acesso CLI (simulação)
+      ios_command:
+        commands: ["show version"]
+      when: ansible_network_os == 'ios'
+
+    - name: Teste de acesso HP
+      comware_command:
+        commands: ["display version"]
+      when: ansible_network_os == 'comware'
+
+    - name: Teste de acesso Dell
+      dellos10_command:
+        commands: ["show version"]
+      when: ansible_network_os == 'dell_os10'

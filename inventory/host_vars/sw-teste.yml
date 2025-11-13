@@ -1,0 +1,3 @@
+ansible_network_os: planet
+snmp_community: "Planet95_RackPABXrw"
+snmp_location: "Pabx"
