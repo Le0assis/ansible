@@ -1,23 +1,19 @@
 # playbooks/test_connect_planet.yml
 ---
-- name: Testar conexão e coletar informações de switches Planet
+- name: Testar conexão SSH e coletar informações do switch Planet
   hosts: sw-teste
   gather_facts: no
-  collections:
-    - ansible.netcommon
 
   vars:
-    ansible_connection: network_cli
-    ansible_network_os: generic
+    ansible_connection: ssh
 
   tasks:
     - name: Mostrar nome do host e IP
       debug:
         msg: "Conectando em {{ inventory_hostname }} ({{ ansible_host }})"
 
-    - name: Verificação de acesso CLI
-      cli_command:
-        command: "show version"
+    - name: Verificação de acesso CLI (comando Planet)
+      raw: "show system"
       register: output
 
     - name: Exibir saída
