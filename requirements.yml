@@ -3,4 +3,4 @@ collections:
   - name: cisco.ios
   - name: community.network
   - name: dellemc.os10
-  - name: hpe.comware
+
