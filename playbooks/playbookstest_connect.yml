@@ -1,29 +1,25 @@
-# playbooks/test_connect.yml
+# playbooks/test_connect_planet.yml
 ---
-- name: Testar conexão e coletar informações básicas dos switches
-  hosts: switches
+- name: Testar conexão e coletar informações de switches Planet
+  hosts: switches_planet
   gather_facts: no
+  collections:
+    - ansible.netcommon
+
+  vars:
+    ansible_connection: network_cli
+    ansible_network_os: generic
 
   tasks:
-    - name: Exibir nome do host e IP configurado
+    - name: Mostrar nome do host e IP
       debug:
         msg: "Conectando em {{ inventory_hostname }} ({{ ansible_host }})"
 
-    - name: Mostrar DNS configurado para este host
+    - name: Verificação de acesso CLI
+      cli_command:
+        command: "show version"
+      register: output
+
+    - name: Exibir saída
       debug:
-        var: dns_servers
-
-    - name: Teste de acesso CLI (simulação)
-      ios_command:
-        commands: ["show version"]
-      when: ansible_network_os == 'ios'
-
-    - name: Teste de acesso HP
-      comware_command:
-        commands: ["display version"]
-      when: ansible_network_os == 'comware'
-
-    - name: Teste de acesso Dell
-      dellos10_command:
-        commands: ["show version"]
-      when: ansible_network_os == 'dell_os10'
+        var: output.stdout
