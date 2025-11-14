@@ -1,7 +1,7 @@
 # playbooks/test_connect_planet.yml
 ---
 - name: Testar conexão e coletar informações de switches Planet
-  hosts: switches_planet
+  hosts: sw-teste
   gather_facts: no
   collections:
     - ansible.netcommon
