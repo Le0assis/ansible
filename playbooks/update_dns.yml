@@ -6,6 +6,7 @@
   vars:
     tftp_server: "172.16.30.20"
     firmware_file: "GS-4210-24T4S_v1.305.ros"
+    backup_dir: "/srv/tftp"
     wait_boot: 90
 
   tasks:
@@ -14,30 +15,39 @@
     # 1. Coletar versão atual
     #####################################################################
     - name: Coletar versão atual
-      raw: "show system information"
+      expect:
+        command: "show system information"
+        responses: {}
+        timeout: 10
       register: ver_before
 
     - debug:
         msg: "Versão atual: {{ ver_before.stdout }}"
 
     #####################################################################
-    # 2. Backup do running-config
+    # 2. Backup da configuração
     #####################################################################
     - name: Coletar running-config
-      raw: "show running-config"
+      expect:
+        command: "show running-config"
+        responses: {}
+        timeout: 20
       register: runconf
 
     - name: Salvar running-config localmente
       local_action:
         module: copy
         content: "{{ runconf.stdout }}"
-        dest: "/srv/tftp/{{ inventory_hostname }}-running-config.cfg"
+        dest: "{{ backup_dir }}/{{ inventory_hostname }}-running-config.cfg"
 
     #####################################################################
-    # 3. Testar ping ao TFTP
+    # 3. Testar conexão com TFTP
     #####################################################################
-    - name: Testar TFTP reachability
-      raw: "ping {{ tftp_server }} count 3"
+    - name: Testar reachability do TFTP server
+      expect:
+        command: "ping {{ tftp_server }} count 3"
+        responses: {}
+        timeout: 15
       register: ping_tftp
 
     - name: Falhar se TFTP não responde
@@ -46,49 +56,53 @@
       when: "'Success rate is 0 percent' in ping_tftp.stdout"
 
     #####################################################################
-    # 4. Enviar firmware via TFTP (com confirmação)
+    # 4. Upload de firmware via TFTP
     #####################################################################
-    - name: Upload do firmware via TFTP
+    - name: Enviar firmware via TFTP
       expect:
         command: "copy tftp firmware {{ tftp_server }} {{ firmware_file }}"
         responses:
           "Are you sure": "Y"
+        timeout: 120
       register: fw_upload
 
     - debug:
-        msg: "Resultado upload: {{ fw_upload.stdout }}"
+        msg: "Resultado do upload: {{ fw_upload.stdout }}"
 
     #####################################################################
-    # 5. Aguardar gravação do firmware
+    # 5. Tempo para gravação da imagem
     #####################################################################
-    - pause:
+    - name: Aguardar gravação do firmware
+      pause:
         seconds: 40
 
     #####################################################################
-    # 6. Reboot com confirmação
+    # 6. Reboot
     #####################################################################
     - name: Reboot do switch
       expect:
         command: "reboot"
         responses:
           "Are you sure": "Y"
+        timeout: 10
       ignore_errors: true
 
     #####################################################################
-    # 7. Aguardar boot
+    # 7. Aguarda boot
     #####################################################################
-    - pause:
+    - name: Esperar switch inicializar
+      pause:
         seconds: "{{ wait_boot }}"
 
     #####################################################################
-    # 8. Coletar versão após update
+    # 8. Coletar versão após o reboot
     #####################################################################
-    - name: Coletar versão após reboot
-      raw: "show system information"
+    - name: Coletar versão após atualização
+      expect:
+        command: "show system information"
+        responses: {}
+        timeout: 20
       register: ver_after
-
-    - debug:
-        msg: "Versão após atualização: {{ ver_after.stdout }}"
 
     #####################################################################
     # 9. Comparar versões

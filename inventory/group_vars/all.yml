@@ -1,7 +1,11 @@
 # inventory/group_vars/all.yml
-ansible_connection: ssh
+ansible_connection: paramiko_ssh
 ansible_user: admin
 ansible_password: cpdscm
+ansible_network_os: none
+ansible_shell_type: raw
+ansible_shell_executable: "/bin/sh"
+ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o KexAlgorithms=+diffie-hellman-group1-sha1 -o HostKeyAlgorithms=+ssh-rsa"
 
 # Timeout e logs
 timeout: 20

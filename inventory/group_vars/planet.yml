@@ -1,0 +1,11 @@
+all:
+  children:
+
+    planet:
+      children:
+
+        planet_gs4210_4s:
+          hosts:
+            sw-teste:
+              ansible_host: 172.16.31.95
+

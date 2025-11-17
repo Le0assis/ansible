@@ -1,0 +1,12 @@
+- hosts: sw-teste
+  gather_facts: false
+  tasks:
+    - name: Testar conexão
+      expect:
+        command: "show system information"
+        responses: {}
+        timeout: 10
+      register: out
+
+    - debug:
+        var: out.stdout
