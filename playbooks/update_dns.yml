@@ -7,7 +7,7 @@
     tftp_server: "172.16.30.20"
     firmware_file: "GS-4210-24T4S_v1.305b251017.ros"
     backup_dir: "/srv/tftp"
-    ansible_network_os: none
+    ansible_network_os: ios
 
   tasks:
 
