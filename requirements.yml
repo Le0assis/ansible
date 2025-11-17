@@ -4,4 +4,9 @@ collections:
   - name: community.network
   - name: dellemc.os10
   - name: ansible.netcommon
+    version: "8.0.0"
+  - name: ansible.utils
+    version: "5.0.0"
+  - name: ansible.network
+
 
