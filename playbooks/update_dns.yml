@@ -1,8 +1,82 @@
 ---
-- name: Atualizar DNS nos switches
-  hosts: switches
-  gather_facts: no
-  roles:
-    - role: network_common
-      vars:
-        action: "update_dns"
+- name: Atualizar firmware em switches PLANET (via CLI/TFTP)
+  hosts: planet_switches
+  gather_facts: false
+  connection: ansible.netcommon.network_cli
+  vars:
+    tftp_server: "172.16.30.20"
+    firmware_file: "FW-GS-4210-24T4S_v1.305b251017.zip"
+    backup_dir: "/srv/tftp"
+  tasks:
+
+    - name: Coletar versão atual
+      ansible.netcommon.cli_command:
+        command: "show version"
+      register: ver_before
+
+    - name: Salvar versão atual localmente
+      local_action:
+        module: copy
+        content: "{{ ver_before.stdout[0] | default('') }}"
+        dest: "{{ backup_dir }}/{{ inventory_hostname }}-version-before.txt"
+
+    - name: Backup da configuração (show running-config)
+      ansible.netcommon.cli_command:
+        command: "show running-config"
+      register: runconf
+
+    - name: Salvar backup da config localmente
+      local_action:
+        module: copy
+        content: "{{ runconf.stdout[0] | default('') }}"
+        dest: "{{ backup_dir }}/{{ inventory_hostname }}-running-config.cfg"
+
+    - name: Testar reachability do TFTP server a partir do switch (ping)
+      ansible.netcommon.cli_command:
+        command: "ping {{ tftp_server }} count 3"
+      register: ping_tftp
+
+    - name: Fail if TFTP server unreachable from switch
+      ansible.builtin.fail:
+        msg: "TFTP server {{ tftp_server }} não alcançável a partir do switch {{ inventory_hostname }}. Saída: {{ ping_tftp.stdout[0] }}"
+      when: "'Success rate is 0 percent' in ping_tftp.stdout[0] or ping_tftp is failed"
+
+    - name: Iniciar transferência do firmware via TFTP (comando PLANET)
+      ansible.netcommon.cli_command:
+        command: "copy tftp firmware {{ tftp_server }} {{ firmware_file }}"
+        # pode ser necessário ajustar prompt/expect dependendo do modelo (ex: confirmação Y/N)
+      register: copy_fw
+      # se necessário, usar 'prompt' ou 'answer' para automatizar confirmações
+
+    - name: Mostrar saída da cópia de firmware
+      ansible.builtin.debug:
+        var: copy_fw.stdout[0]
+
+    - name: Esperar 30s para o switch finalizar escrita (ajuste conforme necessidade)
+      ansible.builtin.pause:
+        seconds: 30
+
+    - name: Reboot / reload switch para ativar nova imagem
+      ansible.netcommon.cli_command:
+        command: "reboot"   # ou 'reload' conforme o modelo - ver manual
+      register: reboot_cmd
+      ignore_errors: yes
+
+    - name: Esperar 90s (boot) - ajuste conforme modelo
+      ansible.builtin.pause:
+        seconds: 90
+
+    - name: Verificar versão após reboot
+      ansible.netcommon.cli_command:
+        command: "show version"
+      register: ver_after
+
+    - name: Salvar versão após atualização localmente
+      local_action:
+        module: copy
+        content: "{{ ver_after.stdout[0] | default('') }}"
+        dest: "{{ backup_dir }}/{{ inventory_hostname }}-version-after.txt"
+
+    - name: Validar se versão mudou (simplificado)
+      ansible.builtin.debug:
+        msg: "Antes: {{ ver_before.stdout[0] | truncate(80) }} | Depois: {{ ver_after.stdout[0] | truncate(80) }}"
