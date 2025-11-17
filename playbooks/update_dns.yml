@@ -1,82 +1,78 @@
 ---
-- name: Atualizar firmware em switches PLANET (via CLI/TFTP)
+- name: Atualizar firmware em switches PLANET (via CLI/TFTP - conexão SSH)
   hosts: sw-teste
   gather_facts: false
-  connection: ansible.netcommon.network_cli
+  connection: ssh
   vars:
+    ansible_user: admin
+    ansible_password: admin
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o KexAlgorithms=+diffie-hellman-group1-sha1 -o HostKeyAlgorithms=+ssh-rsa"
     tftp_server: "172.16.30.20"
     firmware_file: "FW-GS-4210-24T4S_v1.305b251017.zip"
     backup_dir: "/srv/tftp"
+
   tasks:
 
     - name: Coletar versão atual
-      ansible.netcommon.cli_command:
-        command: "show version"
+      ansible.builtin.shell: "show version"
       register: ver_before
 
     - name: Salvar versão atual localmente
       local_action:
         module: copy
-        content: "{{ ver_before.stdout[0] | default('') }}"
+        content: "{{ ver_before.stdout | default('') }}"
         dest: "{{ backup_dir }}/{{ inventory_hostname }}-version-before.txt"
 
     - name: Backup da configuração (show running-config)
-      ansible.netcommon.cli_command:
-        command: "show running-config"
+      ansible.builtin.shell: "show running-config"
       register: runconf
 
     - name: Salvar backup da config localmente
       local_action:
         module: copy
-        content: "{{ runconf.stdout[0] | default('') }}"
+        content: "{{ runconf.stdout | default('') }}"
         dest: "{{ backup_dir }}/{{ inventory_hostname }}-running-config.cfg"
 
-    - name: Testar reachability do TFTP server a partir do switch (ping)
-      ansible.netcommon.cli_command:
-        command: "ping {{ tftp_server }} count 3"
+    - name: Testar reachability do TFTP server
+      ansible.builtin.shell: "ping {{ tftp_server }} count 3"
       register: ping_tftp
 
-    - name: Fail if TFTP server unreachable from switch
+    - name: Falhar se TFTP não responder
       ansible.builtin.fail:
-        msg: "TFTP server {{ tftp_server }} não alcançável a partir do switch {{ inventory_hostname }}. Saída: {{ ping_tftp.stdout[0] }}"
-      when: "'Success rate is 0 percent' in ping_tftp.stdout[0] or ping_tftp is failed"
+        msg: "TFTP {{ tftp_server }} não alcançável. Saída: {{ ping_tftp.stdout }}"
+      when: "'Success rate is 0 percent' in ping_tftp.stdout"
 
-    - name: Iniciar transferência do firmware via TFTP (comando PLANET)
-      ansible.netcommon.cli_command:
-        command: "copy tftp firmware {{ tftp_server }} {{ firmware_file }}"
-        # pode ser necessário ajustar prompt/expect dependendo do modelo (ex: confirmação Y/N)
+    - name: Iniciar transferência do firmware via TFTP
+      ansible.builtin.shell: "copy tftp firmware {{ tftp_server }} {{ firmware_file }}"
       register: copy_fw
-      # se necessário, usar 'prompt' ou 'answer' para automatizar confirmações
 
     - name: Mostrar saída da cópia de firmware
       ansible.builtin.debug:
-        var: copy_fw.stdout[0]
+        var: copy_fw.stdout
 
-    - name: Esperar 30s para o switch finalizar escrita (ajuste conforme necessidade)
+    - name: Esperar switch finalizar escrita
       ansible.builtin.pause:
         seconds: 30
 
-    - name: Reboot / reload switch para ativar nova imagem
-      ansible.netcommon.cli_command:
-        command: "reboot"   # ou 'reload' conforme o modelo - ver manual
+    - name: Reboot / reload switch
+      ansible.builtin.shell: "reboot"
       register: reboot_cmd
       ignore_errors: yes
 
-    - name: Esperar 90s (boot) - ajuste conforme modelo
+    - name: Aguardar boot
       ansible.builtin.pause:
         seconds: 90
 
     - name: Verificar versão após reboot
-      ansible.netcommon.cli_command:
-        command: "show version"
+      ansible.builtin.shell: "show version"
       register: ver_after
 
-    - name: Salvar versão após atualização localmente
+    - name: Salvar versão após atualização
       local_action:
         module: copy
-        content: "{{ ver_after.stdout[0] | default('') }}"
+        content: "{{ ver_after.stdout | default('') }}"
         dest: "{{ backup_dir }}/{{ inventory_hostname }}-version-after.txt"
 
-    - name: Validar se versão mudou (simplificado)
+    - name: Comparar versões
       ansible.builtin.debug:
-        msg: "Antes: {{ ver_before.stdout[0] | truncate(80) }} | Depois: {{ ver_after.stdout[0] | truncate(80) }}"
+        msg: "ANTES: {{ ver_before.stdout | truncate(80) }} | DEPOIS: {{ ver_after.stdout | truncate(80) }}"
