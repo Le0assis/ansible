@@ -1,78 +1,99 @@
 ---
-- name: Atualizar firmware em switches PLANET (via CLI/TFTP - conexão SSH)
+- name: Atualizar firmware em switches PLANET GS-4210-24T4S (via SSH + TFTP)
   hosts: sw-teste
   gather_facts: false
   connection: ssh
   vars:
-    ansible_user: admin
-    ansible_password: admin
     ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o KexAlgorithms=+diffie-hellman-group1-sha1 -o HostKeyAlgorithms=+ssh-rsa"
     tftp_server: "172.16.30.20"
-    firmware_file: "FW-GS-4210-24T4S_v1.305b251017.zip"
+    firmware_file: "GS-4210-24T4S_v1.305b251017.zip"
     backup_dir: "/srv/tftp"
 
   tasks:
 
+    # ───────────────────────────────────────────────────────────────
+    # 1. Coletar versão antes da atualização
+    # ───────────────────────────────────────────────────────────────
     - name: Coletar versão atual
-      ansible.builtin.shell: "show version"
+      ansible.netcommon.cli_command:
+        command: "show system information"
       register: ver_before
 
-    - name: Salvar versão atual localmente
+    - name: Salvar versão atual no servidor Ansible
       local_action:
         module: copy
-        content: "{{ ver_before.stdout | default('') }}"
+        content: "{{ ver_before.stdout[0] }}"
         dest: "{{ backup_dir }}/{{ inventory_hostname }}-version-before.txt"
 
-    - name: Backup da configuração (show running-config)
-      ansible.builtin.shell: "show running-config"
+    # ───────────────────────────────────────────────────────────────
+    # 2. Backup da Configuração
+    # ───────────────────────────────────────────────────────────────
+    - name: Backup da configuração (running-config)
+      ansible.netcommon.cli_command:
+        command: "show running-config"
       register: runconf
 
-    - name: Salvar backup da config localmente
+    - name: Salvar running-config localmente
       local_action:
         module: copy
-        content: "{{ runconf.stdout | default('') }}"
+        content: "{{ runconf.stdout[0] }}"
         dest: "{{ backup_dir }}/{{ inventory_hostname }}-running-config.cfg"
 
+    # ───────────────────────────────────────────────────────────────
+    # 3. Teste de acesso ao servidor TFTP
+    # ───────────────────────────────────────────────────────────────
     - name: Testar reachability do TFTP server
-      ansible.builtin.shell: "ping {{ tftp_server }} count 3"
+      ansible.netcommon.cli_command:
+        command: "ping {{ tftp_server }} count 3"
       register: ping_tftp
 
     - name: Falhar se TFTP não responder
       ansible.builtin.fail:
-        msg: "TFTP {{ tftp_server }} não alcançável. Saída: {{ ping_tftp.stdout }}"
-      when: "'Success rate is 0 percent' in ping_tftp.stdout"
+        msg: "TFTP {{ tftp_server }} não alcançável. Saída: {{ ping_tftp.stdout[0] }}"
+      when: "'Success rate is 0 percent' in ping_tftp.stdout[0]"
 
-    - name: Iniciar transferência do firmware via TFTP
-      ansible.builtin.shell: "copy tftp firmware {{ tftp_server }} {{ firmware_file }}"
+    # ───────────────────────────────────────────────────────────────
+    # 4. Enviar firmware para o switch
+    # ───────────────────────────────────────────────────────────────
+    - name: Upload do firmware via TFTP
+      ansible.netcommon.cli_command:
+        command: "copy tftp firmware {{ tftp_server }} {{ firmware_file }}"
+        prompt: "Are you sure? (Y/N)"
+        answer: "Y"
       register: copy_fw
 
-    - name: Mostrar saída da cópia de firmware
+    - name: Mostrar resultado do upload do firmware
       ansible.builtin.debug:
-        var: copy_fw.stdout
+        var: copy_fw.stdout[0]
 
-    - name: Esperar switch finalizar escrita
-      ansible.builtin.pause:
-        seconds: 30
-
-    - name: Reboot / reload switch
-      ansible.builtin.shell: "reboot"
-      register: reboot_cmd
+    # ───────────────────────────────────────────────────────────────
+    # 5. Reboot do Switch
+    # ───────────────────────────────────────────────────────────────
+    - name: Reboot do switch
+      ansible.netcommon.cli_command:
+        command: "reboot"
+        prompt: "Are you sure? (Y/N)"
+        answer: "Y"
       ignore_errors: yes
 
-    - name: Aguardar boot
+    - name: Aguardar boot (tempo real GS-4210 = ~85s)
       ansible.builtin.pause:
         seconds: 90
 
+    # ───────────────────────────────────────────────────────────────
+    # 6. Coletar versão após o reboot
+    # ───────────────────────────────────────────────────────────────
     - name: Verificar versão após reboot
-      ansible.builtin.shell: "show version"
+      ansible.netcommon.cli_command:
+        command: "show system information"
       register: ver_after
 
     - name: Salvar versão após atualização
       local_action:
         module: copy
-        content: "{{ ver_after.stdout | default('') }}"
+        content: "{{ ver_after.stdout[0] }}"
         dest: "{{ backup_dir }}/{{ inventory_hostname }}-version-after.txt"
 
     - name: Comparar versões
       ansible.builtin.debug:
-        msg: "ANTES: {{ ver_before.stdout | truncate(80) }} | DEPOIS: {{ ver_after.stdout | truncate(80) }}"
+        msg: "ANTES: {{ ver_before.stdout[0] | truncate(120) }}  ---  DEPOIS: {{ ver_after.stdout[0] | truncate(120) }}"
