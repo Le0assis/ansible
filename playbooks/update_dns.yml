@@ -1,6 +1,6 @@
 ---
 - name: Atualizar firmware em switches PLANET (via CLI/TFTP)
-  hosts: planet_switches
+  hosts: sw-teste
   gather_facts: false
   connection: ansible.netcommon.network_cli
   vars:
