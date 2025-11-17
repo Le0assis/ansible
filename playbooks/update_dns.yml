@@ -1,44 +1,104 @@
 ---
-- name: Atualizar firmware em switches PLANET GS-4210-24T4S (via CLI)
+- name: Atualizar firmware Planet GS-4210-24T4S via SSH + TFTP
   hosts: sw-teste
   gather_facts: false
-  connection: ansible.netcommon.network_cli
+
   vars:
     tftp_server: "172.16.30.20"
-    firmware_file: "GS-4210-24T4S_v1.305b251017.ros"
-    backup_dir: "/srv/tftp"
-    ansible_network_os: ios
+    firmware_file: "GS-4210-24T4S_v1.305.ros"
+    wait_boot: 90
 
   tasks:
 
+    #####################################################################
+    # 1. Coletar versão atual
+    #####################################################################
     - name: Coletar versão atual
-      ansible.netcommon.cli_command:
-        command: "show system information"
+      raw: "show system information"
       register: ver_before
 
-    - name: Backup do running-config
-      ansible.netcommon.cli_command:
-        command: "show running-config"
+    - debug:
+        msg: "Versão atual: {{ ver_before.stdout }}"
+
+    #####################################################################
+    # 2. Backup do running-config
+    #####################################################################
+    - name: Coletar running-config
+      raw: "show running-config"
       register: runconf
 
-    - name: Upload de firmware via TFTP
-      ansible.netcommon.cli_command:
+    - name: Salvar running-config localmente
+      local_action:
+        module: copy
+        content: "{{ runconf.stdout }}"
+        dest: "/srv/tftp/{{ inventory_hostname }}-running-config.cfg"
+
+    #####################################################################
+    # 3. Testar ping ao TFTP
+    #####################################################################
+    - name: Testar TFTP reachability
+      raw: "ping {{ tftp_server }} count 3"
+      register: ping_tftp
+
+    - name: Falhar se TFTP não responde
+      fail:
+        msg: "TFTP {{ tftp_server }} não responde. Saída: {{ ping_tftp.stdout }}"
+      when: "'Success rate is 0 percent' in ping_tftp.stdout"
+
+    #####################################################################
+    # 4. Enviar firmware via TFTP (com confirmação)
+    #####################################################################
+    - name: Upload do firmware via TFTP
+      expect:
         command: "copy tftp firmware {{ tftp_server }} {{ firmware_file }}"
-        prompt: "Are you sure? (Y/N)"
-        answer: "Y"
+        responses:
+          "Are you sure": "Y"
       register: fw_upload
 
-    - name: Reboot
-      ansible.netcommon.cli_command:
+    - debug:
+        msg: "Resultado upload: {{ fw_upload.stdout }}"
+
+    #####################################################################
+    # 5. Aguardar gravação do firmware
+    #####################################################################
+    - pause:
+        seconds: 40
+
+    #####################################################################
+    # 6. Reboot com confirmação
+    #####################################################################
+    - name: Reboot do switch
+      expect:
         command: "reboot"
-        prompt: "Are you sure? (Y/N)"
-        answer: "Y"
+        responses:
+          "Are you sure": "Y"
       ignore_errors: true
 
+    #####################################################################
+    # 7. Aguardar boot
+    #####################################################################
     - pause:
-        seconds: 90
+        seconds: "{{ wait_boot }}"
 
-    - name: Coletar versão após upgrade
-      ansible.netcommon.cli_command:
-        command: "show system information"
+    #####################################################################
+    # 8. Coletar versão após update
+    #####################################################################
+    - name: Coletar versão após reboot
+      raw: "show system information"
       register: ver_after
+
+    - debug:
+        msg: "Versão após atualização: {{ ver_after.stdout }}"
+
+    #####################################################################
+    # 9. Comparar versões
+    #####################################################################
+    - name: Comparar versões
+      debug:
+        msg: |
+          ANTES:
+          {{ ver_before.stdout }}
+
+          DEPOIS:
+          {{ ver_after.stdout }}
+
